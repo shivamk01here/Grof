@@ -1,0 +1,16 @@
+{
+  "name": "Dagoba",
+  "version": "0.8.0",
+  "description": "Dagoba",
+  "license": "MIT",
+  "devDependencies": {
+    "gulp": "^3.8.7",
+    "gulp-sweetjs": "^0.6.0",
+    "gulp-sourcemaps": "^1.1.4",
+    "gulp-babel": "~4.0.0",
+    "mocha": "^2.1.0",
+    "chai": "^1.10.0",
+    "chai-as-promised": "^4.1.1",
+    "string.prototype.includes": "~1.0.0"
+  }
+}

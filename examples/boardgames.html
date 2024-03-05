@@ -1,0 +1,295 @@
+<!doctype html>
+<html>
+<head>
+  <title>Dagoba</title>
+  <script type="text/javascript" src="../build/dagoba.js"></script> 
+  <script type="text/javascript" src="../vendor/promise.min.js"></script> 
+  <style type="text/css">
+  </style> 
+</head>
+<body>
+  
+  <p>
+    There's like a graph database of board games? And you like query it and stuff? The result count shows up here; the full results are in the js console. 
+  </p>
+  
+  <div id="graph">Fetching boardgame data... this might take a little while.</div>
+  
+  <div id="showlater" style="display:none">
+    <form id="queryform">
+      <label for="query">Query:</label>
+      <input type="text" name="query" id="query" value="G.v(2).out().run()" size="80">
+      <input type="submit" value="go">
+    </form>
+    
+    <div><pre id="results"></pre></div>
+  
+    <p><pre>
+      Find all games that seat 6 and can be played in 20 minutes
+      
+      This works, but it takes advantage of the fact that relationship data is encoded in each vertex, which is not a common condition:
+      
+        G.v('playing-time::20').in().filter(function(vertex) {return vertex['minimum-players'] <= 6 
+                                                                  && vertex['maximum-players'] >= 6}).run()
+
+      The non-cheating version, using graph traversals:
+      
+        G.v('playing-time::20').in()  .as('v').out('minimum-players').filter(function(vertex) {return vertex.name <= 6})
+                                    .back('v').out('maximum-players').filter(function(vertex) {return vertex.name >= 6})
+                                    .back('v').run()
+
+    </pre></p>
+    
+    <p><pre>
+      Find all worker-placement games that are best with 4 players and have a rating better than 7
+      
+      There's only one worker-placement game designed for exactly four players, and it has an average rating of 6:
+      
+        G.v('mechanic::Worker Placement').in().filter(
+          function(vertex) {return vertex['minimum-players'] == 4
+                                && vertex['maximum-players'] == 4}).run()
+      
+      If we relax the 'exactly 4' condition there are 663 games:
+      
+        G.v('mechanic::Worker Placement').in().filter(
+          function(vertex) {return vertex['minimum-players'] <= 4
+                                && vertex['maximum-players'] >= 4}).run()
+
+      Of which 322 have a rating of 7 or higher:
+      
+        G.v('mechanic::Worker Placement').in().filter(
+          function(vertex) {return vertex['minimum-players'] <= 4
+                                && vertex['maximum-players'] >= 4
+                                && vertex['average'] >= 7}).run()
+
+      Here's a version that ignores the available vertex min/max player data and relies only on traversals:
+      
+        G.v('mechanic::Worker Placement').in().filter(function(vertex) { return vertex['average'] >= 7 })
+           .as('v').out('minimum-players').filter(function(vertex) {return vertex.name <= 4})
+         .back('v').out('maximum-players').filter(function(vertex) {return vertex.name >= 4})
+         .back('v').run()
+      
+    </p></pre>
+    <p><pre>
+      Plot career ratings for various designers (Matt Leacock, Antoine Bauza, Reiner Knizia if you need some exaples)
+      
+      G.v('designer::Reiner Knizia').in().property('average').run().sort()
+      
+    </p></pre>
+    <p><pre>
+      Find a designer's designer collaborators
+      
+        mapcat = function(acc, arr) {return acc.concat(arr)}
+        unique = function(acc, x) {return !~acc.indexOf(x) ? acc.concat(x) : acc}
+      
+        G.v(2).out('designer').in().property('designer').run().reduce(mapcat, []).reduce(unique, [])
+      
+      Or if you know the designer's name:
+      
+        G.v('designer::Reiner Knizia').in().property('designer').run().reduce(mapcat, []).reduce(unique, [])
+        
+      Using graph traversals instead of js (this one also removes the designer from the output list, so it's best):
+      
+        G.v('designer::Reiner Knizia').as('me').in().out('designer').except('me').unique().property('name').run()
+      
+    </p></pre>
+    <p><pre>
+      Find a designer's repeat designer collaborators
+      
+        dupes = function(acc, x, index, all) {return all.lastIndexOf(x) != index ? acc.concat(x) : acc}
+      
+        G.v('designer::Reiner Knizia').as('me').in().out('designer').except('me').property('name').run().reduce(dupes, [])
+      
+    </p></pre>
+    <p><pre>
+      Find a designer's artist collaborators
+      
+        count = function(acc, x) {acc[x] = (acc[x] || 0) + 1; return acc}
+      
+        G.v('designer::Reiner Knizia').in().out('artist').property('name').run().reduce(count, {})
+      
+    </p></pre>
+    <p><pre>
+      Find all repeat collaborators (artists/designers that share more than one game in common)
+      
+      ---> these next few questions are about the entire graph rather than a single game or person, 
+           so they're going to take more than one line of code, and take some time to run...
+      
+      
+    </p></pre>
+    <p><pre>
+      Find any boardgame Kevin Bacons (if there are lots, lower the degree count to 5/4/3)
+      
+      
+      
+    </p></pre>
+    <p><pre>
+      Find all collaborators that do better apart than together (those whose collaborative games are ranked significantly lower than their solo efforts)
+      
+      
+      
+    </p></pre>
+    <p><pre>
+      Find any superstar artists (artists whose games are rated significantly higher than other games by the same designers)
+      
+      
+      
+    </p></pre>
+    <p><pre>
+      Find any discerning publishers (publishers whose games are rated significantly higher than other games by the same designers/artists)
+      
+      
+      
+    </p></pre>
+    <p><pre>
+      See if a rating is influenced more by publisher, designer or artist  (plot career/publishing-history for each and see which is more consistent over time)
+      
+      
+      
+    </p></pre>
+  </div>
+  
+  <script>
+
+    ~(function() {
+      var elements = {}
+      el = function(id) { // memoized element finder
+        if(!id) return elements
+        if(elements[id]) return elements[id]
+        var tryEl = document.getElementById(id)
+        if(!tryEl) return false
+        elements[id] = tryEl
+        return tryEl
+      }
+    })()
+
+    el('queryform').addEventListener('submit', function(e) {
+      e.preventDefault()
+      var query = el('query').value
+      var result = eval(query) // oh dear
+      console.log(result)
+      // el('results').innerHTML = JSON.stringify(result, Dagoba.cleanVertex, 2)
+      el('results').innerHTML = "There were " + result.length + " results."
+    })
+
+
+    prom = getJSON('../data/deci.json').catch(function(err) {
+      console.log('Could not find that data file')
+    })
+    
+    prom.then(function(data) {
+      el('graph').innerHTML = "Generating the graph... this may take a little while." // THINK: why doesn't this work?
+    })
+    
+    prom.then(function(data) {
+      if(!data) return false
+      G = Dagoba.graph()
+      
+      data.forEach(function(game) {
+        if(game['bgg-id'])
+          game['_id'] = game['bgg-id']
+        
+        var game_id = G.addVertex(game)
+        
+        props = ['artist', 'category', 'designer', 'publisher', 'subdomain', 'version', 'family', 'mechanic', 'year-published', 'maximum-players', 'minimum-players', 'playing-time']
+        
+        props.forEach(function(prop) {
+          var values = game[prop]
+          if(!values) return false
+          
+          if(!Array.isArray(values))
+            return addStuff(game_id, prop, values)
+          
+          
+          values.forEach(function(value) {
+            return addStuff(game_id, prop, value)
+          })
+        })
+      })
+
+      displayGraphStats()
+      el('showlater').style.display = ""
+    })
+    
+    var addStuff = function(game_id, prop, value) {
+      // if vertex exists get it
+      var prop_id = prop + '::' + value
+      var vertex = G.findVertexById(prop_id)
+    
+      // otherwise add it
+      if(!vertex)
+        vertex = G.addVertex({_id: prop_id, name: value, type: prop})
+    
+      // add edge
+      G.addEdge({_out: game_id, _in: prop_id, _label: prop})
+    }
+
+    var displayGraphStats = function() {
+      var str = "<h3>Graph generated</h3>\n"
+              + "<p>vertices: "
+              + G.vertices.length
+              + "</p><p>edges:"
+              + G.edges.length
+              + "</p>"
+
+      el('graph').innerHTML = str
+    }
+    
+
+    function xhr (url, options, data) {
+      //// very simple promise-based XHR implementation
+    
+      return new Promise(function(resolve, reject) {
+        var req = new XMLHttpRequest()
+        req.open(options.method || 'GET', url)
+        
+        Object.keys(options.headers || {}).forEach(function (key) {
+          req.setRequestHeader(key, options.headers[key])
+        })
+        
+        var formdata = new FormData()
+        Object.keys(data || {}).forEach(function (key) {
+          var datum = typeof data[key] == 'object' ? JSON.stringify(data[key]) : data[key]
+          formdata.append(key, datum)
+        })
+        
+        if(options && options.type)
+        req.responseType = options.type
+                
+        req.onload = function() {
+          if (req.status == 200) // silly safari
+            resolve( (req.responseType != options.type) // THINK: JSON.parse throws on invalid JSON
+                  && options.type == 'json' ? JSON.parse(req.response) : req.response)
+          else 
+            reject(Error(req.statusText))
+        }
+        
+        req.onerror = function() {
+          reject(Error("Network Error"))
+        }
+        
+        req.send(formdata)
+      })
+    }
+    
+    function getJSON (url, params) {
+      var options = { headers: { 'Accept': 'application/json' }
+                    ,  method: 'GET'
+                    ,    type: 'json'
+                    }
+      
+      var params = params || {}
+      var enc = function(param) {return !param && param!==0 ? '' : encodeURIComponent(param)}
+      var qstring = Object.keys(params).reduce(function(acc, key) {return acc + enc(key) +'='+ enc(params[key]) +'&'}, '?')
+      
+      return xhr(url + qstring, options) 
+    }
+
+    // NOTE: a few of the vertices (27420, 5, 6, 7, 8, 9, 30, and 16) have duplicate ids, so there are some errors in transmission. 
+    // NOTE: bentodojo is really slow at delivering the deci.json file, for some reason. 
+
+  </script>
+  
+  
+</body>
+</html>
